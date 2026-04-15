@@ -1,0 +1,51 @@
+version: '3.8'
+
+services:
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "8080:80"
+    volumes:
+      - ./php:/var/www/html
+      - ./docker/nginx.conf:/etc/nginx/conf.d/default.conf
+    depends_on:
+      - php
+    networks:
+      - wasmlightroom
+
+  php:
+    build: ./php
+    volumes:
+      - ./php:/var/www/html
+    depends_on:
+      - db
+    networks:
+      - wasmlightroom
+
+  db:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass
+      MYSQL_DATABASE: wasmlightroom
+      MYSQL_USER: wasm_user
+      MYSQL_PASSWORD: wasm_pass
+    ports:
+      - "3306:3306"
+    volumes:
+      - db_data:/var/lib/mysql
+      - ./dump.sql:/docker-entrypoint-initdb.d/dump.sql
+    networks:
+      - wasmlightroom
+
+  wasm-builder:
+    build: ./wasm
+    volumes:
+      - ./wasm:/src
+      - ./php/public/wasm:/output
+    command: bash -c "em++ /src/filters.cpp -O3 -s WASM=1 -s EXPORTED_FUNCTIONS='[\"_malloc\",\"_free\",\"_apply_grayscale\",\"_apply_sepia\",\"_apply_invert\",\"_apply_brightness\",\"_apply_contrast\",\"_apply_radial_filter\",\"_apply_masked_filter\",\"_compute_histogram\"]' -s EXPORTED_RUNTIME_METHODS='[\"ccall\",\"cwrap\",\"HEAPU8\",\"HEAPU32\"]' -s ALLOW_MEMORY_GROWTH=1 -s MODULARIZE=1 -s EXPORT_NAME='FilterModule' -s ENVIRONMENT='web,worker' -s USE_PTHREADS=1 -s PTHREAD_POOL_SIZE=4 -o /output/filters.js"
+
+volumes:
+  db_data:
+
+networks:
+  wasmlightroom:
